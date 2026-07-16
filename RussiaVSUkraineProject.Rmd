@@ -1,0 +1,274 @@
+---
+title: "Russia/Ukraine Project"
+author: "Auden Griffiths"
+date: "2026-04-19"
+output: html_document
+---
+
+```{=html}
+<style type="text/css">
+  body{
+  font-size: 14pt;
+  }
+</style>
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction 
+
+The Russia–Ukraine War began on February 24, 2022, when Russia launched a full-scale invasion of Ukraine, escalating a conflict that had persisted since 2014 into a interstate war. As one of the most significant military confrontations in Europe since World War II, the invasion has resulted in widespread destruction, substantial civilian casualties, and the displacement of millions of people. The conflict has also reshaped global political dynamics, drawing international involvement through military aid, economic sanctions, and diplomatic responses.
+
+This project examines patterns of violent conflict in Ukraine from the start of the invasion through the present day. Specifically, this project focuses on how the frequency of violent events has evolved over time, which types of conflict events occur most frequently, and which are associated with the highest average fatalities. By analyzing trends in battles, explosions or remote violence, and violence against civilians, this study aims to provide a data-driven perspective on the intensity and human impact of the war across different phases of the conflict.
+
+## Data Source
+
+This project uses data from Armed Conflict Location & Event Data Project (ACLED), an event-based dataset designed for disaggregated conflict analysis and crisis mapping. ACLED collects detailed, real-time information on political violence and protest events around the world, including data on event dates, locations, event types, and reported fatalities. The data used in this analysis focuses specifically on conflict events in Ukraine from February 24, 2022 through March 2025.
+
+## Visual Style Choices
+
+The visual style of this project is designed to clearly communicate patterns in violent conflict over time and across event types using straightforward and readable graphics in Plotly. Because the topic is war and organized violence, I chose a tan background to mimic the color of a map. Since I am Colorblind, I chose 3 wildly different colors to represent the different event types. This helps match the subject matter while still making differences between event categories easy to see. Across all visualizations, I aimed for a balanced layout with readable titles, subtitles, and labels that explain exactly what each figure shows. I would also use a simple theme with a light background and clear gridlines so the figures remain professional and easy to follow.
+```{r}
+# Load Necessary Libraries and Data Upload/ Manipulation
+
+library(readr)
+library(dplyr)
+library(janitor)
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(lubridate)
+library(tidyr)
+library(stringr)
+library(geodata)
+library(patchwork)
+library(forcats)
+library(scales)
+
+dir <- "/Users/audengriffiths/Desktop/datafolder"
+
+ukraine <- read_csv(file.path(dir, "ACLED Data_2026-03-22.csv"))
+
+ukraine <- ukraine %>%
+  clean_names()
+
+head(ukraine)
+```
+
+```{r}
+ukraine1 <- ukraine
+
+ukraine1 <- ukraine1 %>%
+  mutate(event_date = as.Date(event_date))
+
+ukraine_clean <- ukraine1 %>%
+  filter(
+    country == "Ukraine",
+    !is.na(event_date),
+    !is.na(event_type)
+  ) %>%
+  mutate(
+    event_type_clean = case_when(
+      event_type == "Battles" ~ "Battles",
+      event_type == "Explosions/Remote violence" ~ "Explosions/Remote violence",
+      event_type == "Violence against civilians" ~ "Violence against civilians",
+      TRUE ~ NA_character_
+    ),
+    year_month = floor_date(event_date, "month"),
+    war_year = case_when(
+      event_date >= as.Date("2022-02-24") & event_date < as.Date("2023-02-24") ~ "Year 1",
+      event_date >= as.Date("2023-02-24") & event_date < as.Date("2024-02-24") ~ "Year 2",
+      event_date >= as.Date("2024-02-24") & event_date < as.Date("2025-02-24") ~ "Year 3",
+      event_date >= as.Date("2025-02-24") ~ "Year 4+",
+      TRUE ~ NA_character_
+    ),
+    location_clean = str_remove(location, " - .*")
+  ) %>%
+  filter(!is.na(event_type_clean))
+
+ukraine_monthly <- ukraine_clean %>%
+  group_by(year_month) %>%
+  summarise(events = n(), .groups = "drop")
+
+ukraine_event_counts <- ukraine_clean %>%
+  count(event_type_clean, sort = TRUE)
+
+ukraine_fatality_summary <- ukraine_clean %>%
+  filter(!is.na(fatalities)) %>%
+  group_by(event_type_clean) %>%
+  summarise(
+    average_fatalities = mean(fatalities),
+    median_fatalities = median(fatalities),
+    total_events = n(),
+    .groups = "drop"
+  )
+```
+
+
+## Data Description 
+Dataset for Ukraine covering the period from February 24, 2022 through March 2025.
+Key variables include:
+
+ukraine_clean - cleaned event dataset containing conflict events, including event dates, event types, fatalities, and locations
+ukraine_monthly - aggregated dataset showing the number of conflict events per month 
+ukraine_event_counts - dataset summarizing the total frequency of each event type
+ukraine_fatality_summary - dataset containing average and median fatalities by event type
+event_date - which identifies when each event occurred
+event_type - which categorizes the form of conflict
+fatalities - which records the reported number of deaths associated with each event
+
+## Violent Conflicts after War began in Ukraine
+Overtime, the nature of the conflict shifted, with periods of intensified fighting followed by relative stabilization in certain areas, reflecting changes in military strategy, territorial control, and international involvement. To examine how the frequency of violent conflict events changed over time, a time series visualization was created. This visualization aggregates the number of conflict events per month, allowing for a clear view of trends in conflict intensity throughout the duration of the war. By focusing on battles, explosions/remote violence, and violence against civilians, the graph highlights the evolution of large-scale violence following the initial invasion.
+
+```{r}
+library(plotly)
+
+p <- ggplot(ukraine_monthly, aes(
+  x = year_month,
+  y = events,
+  group = 1,
+  text = paste(
+    "Month:", format(year_month, "%Y-%m"),
+    "<br>Violent events:", comma(events)
+  )
+)) +
+  geom_line(color = "darkred", linewidth = 1) +
+  labs(
+    title = "Frequency of Violent Events Over Time in Ukraine",
+    subtitle = "Monthly count of battles, explosions/remote violence, and violence against civilians",
+    x = "Date",
+    y = "Number of Events"
+  ) +
+  scale_y_continuous(labels = comma) +
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(fill = "#f4f2e7", color = NA),
+    panel.background = element_rect(fill = "#f4f2e7", color = NA),
+    panel.border = element_rect(color = "#000000", fill = NA, linewidth = 1),
+    panel.grid.major.x = element_line(color = "#e6e6e6", linewidth = 0.5),
+    panel.grid.major.y = element_line(color = "#e6e6e6", linewidth = 0.5),
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 13),
+    axis.text = element_text(size = 11)
+  )
+
+ggplotly(p, tooltip = "text") %>%
+  layout(margin = list(t = 90))
+```
+
+This visualization shows a sharp increase in conflict events immediately following February 2022, corresponding to the onset of the invasion. This initial spike reflects the rapid escalation of hostilities as Russian forces advanced into Ukrainian territory. In the months following, fluctuations in event frequency likely indicate shifts between active combat phases and periods of reduced intensity, which is associated with external influences such as military aid and diplomatic developments.
+
+How the frequency of violent conflict events has changed over time provides insight into shifts in conflict intensity, but it is also important to understand which types of violence are most prevalent. To better understand this, the next visualization compares the frequency of different event types, highlighting whether battles, explosions or remote violence, or violence against civilians occur most often throughout the conflict.
+
+```{r}
+library(plotly)
+
+p2 <- ggplot(ukraine_event_counts, aes(
+  x = reorder(event_type_clean, n),
+  y = n,
+  fill = event_type_clean,
+  text = paste(
+    "Event Type:", event_type_clean,
+    "<br>Total Events:", comma(n)
+  )
+)) +
+  geom_col(width = 0.65) +
+  coord_flip() +
+  scale_fill_manual(values = c(
+    "Battles" = "#7B241C",
+    "Explosions/Remote violence" = "#1F618D",
+    "Violence against civilians" = "#117A65"
+  )) +
+  labs(
+    title = "Violent Conflict Event Types in Ukraine",
+    subtitle = "Comparison of battles, explosions/remote violence, and violence against civilians",
+    x = "",
+    y = "Number of Events"
+  ) +
+  scale_y_continuous(labels = comma) +
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(fill = "#f4f2e7", color = NA),
+    panel.background = element_rect(fill = "#f4f2e7", color = NA),
+    panel.border = element_rect(color = "#000000", fill = NA, linewidth = 1),
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "none"
+  )
+
+ggplotly(p2, tooltip = "text") %>%
+  layout(
+    margin = list(t = 100),
+    showlegend = FALSE
+  )
+```
+
+This visualization reveals a clear imbalance in the distribution of violent conflict event types. Explosions or remote violence account for the overwhelming majority of events while violence against civilians occurs far less frequently than I expected. 
+
+The distribution of event types reflects a great shift in modern warfare. Rather than relying primarily on direct, close-range combat, the conflict has been heavily characterized by indirect forms of violence, including missile strikes, drone attacks, and artillery bombardment. These forms of warfare are captured in the data as explosions or remote violence, which helps explain why this category accounts for the largest share of events.
+
+It is important to understand that this distribution highlights which types of events occur most frequently, but frequency alone does not fully capture the severity or impact of these events. Some forms of violence may occur less frequently but result in greater loss of life per event. To better understand this, the following visualization examines the average number of fatalities associated with each event type.
+
+```{r}
+library(plotly)
+
+p3 <- ggplot(ukraine_fatality_summary, aes(
+  x = reorder(event_type_clean, average_fatalities),
+  y = average_fatalities,
+  fill = event_type_clean,
+  text = paste(
+    "Event Type:", event_type_clean,
+    "<br>Avg Fatalities:", round(average_fatalities, 2),
+    "<br>Median:", round(median_fatalities, 2)
+  )
+)) +
+  geom_col(width = 0.65) +
+  coord_flip() +
+  scale_fill_manual(values = c(
+    "Battles" = "#7B241C",
+    "Explosions/Remote violence" = "#1F618D",
+    "Violence against civilians" = "#117A65"
+  )) +
+  labs(
+    title = "Average Fatalities by Event Type in Ukraine",
+    subtitle = "Comparison of severity across different forms of violent conflict",
+    x = "",
+    y = "Average Fatalities per Event"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(fill = "#f4f2e7", color = NA),
+    panel.background = element_rect(fill = "#f4f2e7", color = NA),
+    panel.border = element_rect(color = "#000000", fill = NA, linewidth = 1),
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    legend.position = "none"
+  )
+
+ggplotly(p3, tooltip = "text") %>%
+  layout(
+    margin = list(t = 100),
+    showlegend = FALSE
+  )
+```
+
+The high frequency of explosions or remote violence reflects the increasing use of indirect warfare, particularly missile and drone strikes targeting infrastructure such as energy systems and transportation networks. Major news organizations such as BBC News and Reuters report that Russia has repeatedly launched large-scale barrages aimed at overwhelming Ukrainian air defenses and disrupting essential services (Reuters, 2026). As a result, many of these events do not produce high fatality counts, helping explain the relatively low average number of deaths per explosion event in the data.
+
+In contrast, battles are associated with the highest average fatalities per event, suggesting that direct military engagements tend to be more lethal when they occur. Violence against civilians, while relatively rare in comparison to other event types, still results in a higher average number of fatalities than explosions or remote violence. This indicates that although these events occur less frequently, they may be more concentrated and severe in their impact.
+
+Overall, these findings reinforce the importance of distinguishing between the frequency and severity of conflict events. While explosions and remote violence dominate in terms of total occurrences, they do not necessarily contribute the most to fatalities on a per-event basis. Instead, less frequent forms of conflict, such as battles and violence against civilians, can have a disproportionately high death count. This highlights the complexities of modern warfare as well as Russia's strategy going forward.
+
+## Key Insights and Implications
+This project provided a data-driven analysis of violent conflict events in Ukraine from the start of the invasion in February 2022 through March 2025, revealing important patterns in both the frequency and severity of different forms of violence. The time series analysis showed that the conflict experienced an immediate and substantial surge in activity following the initial invasion, followed by periods of fluctuation that reflect changing phases of the war and shifts in military strategy. The distribution of event types demonstrated that explosions or remote violence overwhelmingly dominate the conflict in terms of frequency, far exceeding both battles and violence against civilians. However, further analysis revealed that frequency does not necessarily correspond to severity. While explosions were the most common form of conflict, they were associated with the lowest average fatalities per event. In contrast, battles and violence against civilians, though less frequent, resulted in higher average fatalities, indicating a greater level of lethality.
+
+
+## References
+
+1.  ACLED Data Export Tool – Official political violence & protest dataset used for analysis: <https://acleddata.com/data/#download>
+
+2. “Russia Hits Ukraine Energy Infrastructure with Major Missile, Drone Strikes, Kyiv Says.” Reuters, 22 Feb. 2026. <https://www.reuters.com/business/energy/russia-hits-ukraine-energy-infrastructure-with-major-missile-drone-strikes-kyiv-2026-02-22/>
+
